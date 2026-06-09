@@ -21,7 +21,6 @@ services:
     name: echosight-api
     runtime: node
     plan: free
-    rootDir: backend
     healthCheckPath: /api/health
     # --include=dev forces devDependencies (nest/tsc/prisma) even though
     # NODE_ENV=production would otherwise make npm skip them.
