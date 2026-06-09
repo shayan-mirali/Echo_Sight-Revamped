@@ -1,0 +1,87 @@
+// EchoSight data model.
+//
+// Postgres in every environment (local via docker-compose, prod via Render/Neon).
+// Enum-like fields and the classification map are stored as String (the app
+// layer validates + (de)serializes JSON) to keep the schema portable; they can
+// be promoted to real Postgres `enum`/`jsonb` types later if desired.
+//
+// Schema is applied with `prisma db push` (see package.json `prisma:push`) —
+// no migration history is kept. Switch to `prisma migrate dev/deploy` if you
+// want versioned migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  registeredName String   @default("")
+  verified       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  settings      UserSettings?
+  otpCodes      OtpCode[]
+  refreshTokens RefreshToken[]
+  soundAlerts   SoundAlert[]
+}
+
+model UserSettings {
+  userId               String   @id
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  themeMode            String   @default("system") // system | light | dark
+  hapticIntensity      String   @default("medium") // low | medium | high
+  sensitivityThreshold Float    @default(0.6)
+  // JSON map of { "<sound class>": bool }. Defaulted in app code on creation.
+  enabledClassifications String @default("{}")
+  updatedAt            DateTime @updatedAt
+}
+
+model OtpCode {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  purpose    String // VERIFY_EMAIL | RESET_PASSWORD | LOGIN
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, purpose])
+}
+
+// A surfaced sound event — one row per alert the backend pushed to the client.
+// Persisted so the history screen syncs across devices. Only alerts that pass
+// the user's sensitivity + enabled-classification filters are stored here.
+model SoundAlert {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String // one of common/defaults.ts SOUND_CLASSES
+  confidence Float
+  angle      Float    @default(0) // 0..360, estimated (mono mic has no true DOA)
+  severity   String // info | warning | danger
+  transcript String? // populated for Name Call / Speech when an ASR seam is wired
+  detectedAt DateTime @default(now())
+
+  @@index([userId, detectedAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

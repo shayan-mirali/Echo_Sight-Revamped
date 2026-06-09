@@ -1,0 +1,22 @@
+# Local Postgres for development (matches the production engine).
+#
+#   docker compose up -d        # start
+#   npm run prisma:push         # create tables
+#   npm run db:seed             # optional demo data
+#
+# DATABASE_URL for this is in .env.example.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: echo
+      POSTGRES_PASSWORD: echo
+      POSTGRES_DB: echosight
+    ports:
+      - "5432:5432"
+    volumes:
+      - echo_pg:/var/lib/postgresql/data
+
+volumes:
+  echo_pg:

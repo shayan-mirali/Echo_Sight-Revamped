@@ -1,0 +1,67 @@
+# Render Blueprint — one-click deploy of the EchoSight API.
+#
+# In Render: New → Blueprint → connect this repo. Render reads this file,
+# provisions the Postgres database, wires DATABASE_URL, generates the JWT
+# secret, and builds + starts the web service. You only fill the SMTP_* secrets
+# (marked `sync: false`) in the dashboard.
+#
+# Note: this `databases:` block uses Render's FREE Postgres, which Render
+# deletes ~30 days after creation. For a longer-lived free DB, delete the
+# `databases:` block, set DATABASE_URL to `sync: false`, and paste a Neon
+# (neon.tech) connection string in the dashboard instead.
+
+databases:
+  - name: echosight-db
+    plan: free
+    databaseName: echosight
+    user: echosight
+
+services:
+  - type: web
+    name: echosight-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    healthCheckPath: /api/health
+    # --include=dev forces devDependencies (nest/tsc/prisma) even though
+    # NODE_ENV=production would otherwise make npm skip them.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    # db push creates the tables from schema.prisma on each boot (idempotent).
+    startCommand: npx prisma db push && node dist/main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: echosight-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true # Render generates a strong random value
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: REFRESH_TTL_DAYS
+        value: "30"
+      - key: OTP_TTL_MINUTES
+        value: "10"
+      - key: TRUST_PROXY
+        value: "true" # Render runs behind a proxy → real client IP for rate limiting
+      - key: WS_MAX_FRAME_BYTES
+        value: "262144"
+      - key: WS_MAX_FRAMES_PER_SEC
+        value: "30"
+      # Non-`*` value to satisfy the prod boot guard. Native mobile clients send
+      # no Origin header, so this doesn't block them; set it to your web origin
+      # if/when you ship a Flutter web build.
+      - key: CORS_ORIGIN
+        value: https://echosight.app
+      # --- SMTP secrets: set these in the Render dashboard (not committed) ---
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
